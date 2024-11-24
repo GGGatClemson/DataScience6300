@@ -1,0 +1,23 @@
+# Ignore .env file containing sensitive information
+.env
+
+# Ignore virtual environment directories
+venv/
+.virtualenv/
+
+# Ignore Version1 folder
+Version1/
+
+# Ignore __pycache__ and compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore system files (e.g., macOS, IDEs, etc.)
+.DS_Store
+.idea/
+*.iml
+
+# Ignore logs and temp files
+*.log
+*.tmp

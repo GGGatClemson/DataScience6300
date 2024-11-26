@@ -1,8 +1,9 @@
-import pandas as pd
-from sklearn.model_selection import train_test_split
 import numpy as np
-
-from Version1.SyntheticDistanceCalculator import SyntheticDistanceCalculator
+import pandas as pd
+import random
+import time as t
+from .SyntheticDistanceCalculator import SyntheticDistanceCalculator
+from sklearn.model_selection import train_test_split
 
 
 class DataProcessor:
@@ -11,6 +12,7 @@ class DataProcessor:
         self.data = pd.read_csv(csv_file_path)
         print("Initial Data Loaded:")
         print(self.data.head())  # Print a few rows to verify
+
 
         self.distanceCalc = SyntheticDistanceCalculator()  # replace this with API to get real Data
 
@@ -38,58 +40,52 @@ class DataProcessor:
         dataframe.to_csv(output_csv_file, index=False)
         print(f"DataFrame has been successfully saved to {output_csv_file}")
 
-    def calculate_distance_all_journeys(self,current_position):
-        """
-          Calculate distances and times from all starting stations to all destination stations.
-          """
-        num_rows = len(self.data)
-        car_sharers = self.data['Carshare_C'].tolist()
+    def generate_synthetic_trips(self, num_samples):
+        # API only lets 2000 calls per day, so using it for learning is an issue but for testing the model its fine
+        # Random walking distances (0.1 km to 1 km)
+        walking_distances = np.random.uniform(0.1, 1, num_samples)
+        # Assume average walking speed: 5 km/h also adds some random difficulty so its not straight to distance
+        walking_times = walking_distances * 12 * random.uniform(.9,1.1) # Assume average walking speed: 5 km/h
 
-        # Prepare a list to hold data for the new DataFrame
-        new_data = []
+        # Random driving distances (1 km to 50 km)
+        driving_distances = np.random.uniform(1, 50, num_samples)
+        driving_times = driving_distances * 2  # Assume average driving speed: 30 km/h
 
-        # Iterate over all possible destination stations
-        for dest_index, dest_row in self.data.iterrows():
-            dest_coords = (dest_row['Lat'], dest_row['Long'])
-            dest_car_sharer = dest_row['Carshare_C']
+        # Costs created from drive time and distance
+        daily_cost = 87.5
+        total_cost = np.zeros(num_samples)
+        for index, trip in enumerate(driving_times):
+            trip_hours = trip[1]/60
+            if  trip_hours > 7:
+                total_cost[index] = daily_cost + np.maximum(0, (driving_distances[index] - 200)) * 0.67
+            else:
+                hourly_cost = random.uniform(12.5 * trip_hours, 87.5)
+                total_cost[index] = hourly_cost + np.maximum(0, (driving_distances[index] - 200)) * 0.67
 
-            # Iterate over all possible starting stations
-            for start_index, start_row in self.data.iterrows():
-                if start_index == dest_index:
-                    # Skip if the starting station is the same as the destination station
-                    continue
 
-                start_coords = (start_row['Lat'], start_row['Long'])
-                start_car_sharer = start_row['Carshare_C']
+        # Suitability scores (these weights would be set by user)
+        # driving time is ignored bc distance is effective and time at the location and drive time are in total cost
+        suitability_scores = (
+            10 / walking_distances +
+            10 / walking_times +
+            10 / driving_distances -
+            total_cost / 50
+        )
 
-                # Calculate driving distance and time from starting station to destination station
-                distance, time = self.distanceCalc.calculate_distance_time(start_coords, dest_coords)
+        # Combine into a DataFrame
+        data = pd.DataFrame({
+            'walking_distance': walking_distances,
+            'walking_time': walking_times,
+            'driving_distance': driving_distances,
+            'driving_time': driving_times,
+            'total_cost': total_cost,
+            'suitability_score': suitability_scores
+        })
 
-                # Calculate walking distance and time from current position to starting station
-                walk_distance, walk_time = self.distanceCalc.calculate_distance_time(
-                    current_position, start_coords, 'walking'
-                )
+        return data
 
-                # Determine availability
-                availability = 1 if dest_car_sharer == start_car_sharer else 0
 
-                # Append the journey data to the list
-                new_data.append({
-                    'start_station_id': start_index,
-                    'destination_station_id': dest_index,
-                    'distance_km': distance,
-                    'duration_min': time,
-                    'company_name': start_car_sharer,
-                    'availability': availability,
-                    'walk_distance': walk_distance,
-                    'walk_time': walk_time
-                })
-
-        # Create a new DataFrame from the list
-        self.new_data = pd.DataFrame(new_data)
-        print("Generated journey data for all origin-destination pairs.")
-
-    def generate_dummy_current_positions(self, n, max_distance_km=2):
+    def generate_new_positions(self, n, max_distance_km=2):
         """
         Generate 'n' dummy current positions within a walking distance of parking locations.
         :param n: Number of dummy current positions to generate.

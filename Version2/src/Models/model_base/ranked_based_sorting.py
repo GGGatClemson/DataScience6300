@@ -1,59 +1,94 @@
-from sklearn.ensemble import RandomForestRegressor
+import pandas as pd
+import matplotlib.pyplot as plt
 
-from ...data_wrangling.data_processing import DataProcessor
-from ...utils.evaluator import Evaluator
-from ...utils.inference import Inference
-from ...utils.visualizations import Visualizer
-
-class RankedBasedSorting:
-    def __init__(self, dataProcessor,dataframe,config):
+class RankBasedSortingModel:
+    def __init__(self):
         """
-        Initialize the RankedBasedSorting class.
-        :param dataframe: DataFrame containing input data.
+        Initialize the rank-based sorting model.
         """
-        self.data = dataframe
-        self.model = None
-        self.config = config
+        self.data = None
+        self.ranked_data = None
 
-        # Utility classes
-        self.data_processor = dataProcessor
-        self.evaluator = Evaluator()
-        self.inference = Inference(num_samples=100)
-        self.visualizer = Visualizer(features=self.config.FEATURES, framework="sklearn")
-
-
-    def prepare_data(self):
+    def rank_data(self, data_frame, sort_columns, ascending_order=None):
         """
-        Split data into training and testing sets.
+        Rank the data based on specified columns and normalize ranks into suitability scores.
+        :param data_frame: DataFrame containing the data to be ranked.
+        :param sort_columns: List of column names to sort by.
+        :param ascending_order: List of booleans specifying sort order for each column.
+                                True for ascending, False for descending. Defaults to ascending for all.
+        :return: DataFrame with added 'rank' and 'suitability_score' columns.
         """
-        self.X_train, self.X_test, self.y_train, self.y_test = self.data_processor.split_data(self.data,
-            self.config.FEATURES,
-            self.config.TARGET,
-            test_size=self.config.TEST_SIZE,
-            random_state=self.config.RANDOM_STATE
-        )
-    def train_test_visualize(self):
+        if ascending_order is None:
+            ascending_order = [True] * len(sort_columns)
 
-        # Prepare data
-        self.prepare_data()
+        # Sort the DataFrame
+        ranked_df = data_frame.sort_values(by=sort_columns, ascending=ascending_order).reset_index(drop=True)
 
-        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
-        self.model.fit(self.X_train, self.y_train)
-        print("Model training complete.")
-        metrics = self.evaluator.evaluate(self.model, self.X_test,self. y_test)
-        print(metrics)
-        self.inference.get_top_k_recommendations_for(self.model,5)
-        #self.visualizer.plot_results(self.model,self.X_test,self.y_test,self.y_train)
-        self.visualizer.plot_results(self.model, self.X_test,self.y_test)
+        # Assign ranks (1 = best, higher values = worse)
+        ranked_df['rank'] = ranked_df.index + 1
 
+        # Normalize ranks to create suitability scores (1 = best score, 0 = worst score)
+        max_rank = ranked_df['rank'].max()
+        ranked_df['suitability_score'] = 1 - (ranked_df['rank'] / max_rank)
 
-    def get_model(self):
+        self.data = data_frame
+        self.ranked_data = ranked_df
+        return ranked_df
+
+    def test_model(self):
         """
-        Return the trained model.
-        :return: Trained model.
+        Test the model by comparing rank-based suitability scores against individual features.
+        Provides a summary analysis of how rankings align with feature values.
         """
-        return self.model
+        if self.ranked_data is None:
+            raise ValueError("No ranked data available. Run 'rank_data' first.")
 
+        # Analyze correlation between suitability scores and key features
+        correlations = self.ranked_data.corr()['suitability_score']
 
+        print("Feature Correlations with Suitability Score:")
+        print(correlations)
+        return correlations
 
+    def visualize_ranking(self):
+        """
+        Visualize the ranked data using a bar chart of suitability scores.
+        """
+        if self.ranked_data is None:
+            raise ValueError("No ranked data available. Run 'rank_data' first.")
 
+        # Plot suitability scores
+        plt.figure(figsize=(10, 6))
+        plt.bar(self.ranked_data.index, self.ranked_data['suitability_score'], color='blue', alpha=0.7)
+        plt.xlabel("Ranked Entries")
+        plt.ylabel("Suitability Score")
+        plt.title("Suitability Scores of Ranked Data")
+        plt.show()
+
+    def visualize_features(self):
+        """
+        Visualize the relationship between features and suitability scores.
+        """
+        if self.ranked_data is None:
+            raise ValueError("No ranked data available. Run 'rank_data' first.")
+
+        # Scatter plot for each feature vs suitability score
+        feature_columns = [col for col in self.ranked_data.columns if col not in ['rank', 'suitability_score']]
+
+        for feature in feature_columns:
+            plt.figure(figsize=(8, 5))
+            plt.scatter(self.ranked_data[feature], self.ranked_data['suitability_score'], alpha=0.7)
+            plt.xlabel(feature)
+            plt.ylabel("Suitability Score")
+            plt.title(f"Suitability Score vs {feature}")
+            plt.show()
+
+    def get_top_k(self, k):
+        """
+        Retrieve the top-k ranked rows.
+        :param k: Number of top rows to retrieve.
+        :return: DataFrame with top-k rows.
+        """
+        if self.ranked_data is None:
+            raise ValueError("No ranked data available. Run 'rank_data' first.")
+        return self.ranked_data.head(k)

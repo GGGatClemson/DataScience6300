@@ -2,7 +2,7 @@ class Config:
     """
     Configuration class for storing global constants and settings.
     """
-    CSV_PATH = "//Data/december.csv"
+    CSV_PATH ="../Data/december.csv"
     FEATURES = ['distance_km', 'duration_min', 'walk_distance', 'walk_time', 'availability']
     TARGET = 'target_score'
     TEST_SIZE = 0.2

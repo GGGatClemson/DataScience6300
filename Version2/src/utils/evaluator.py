@@ -1,7 +1,6 @@
-import numpy as np
-from sklearn.metrics import mean_squared_error, mean_absolute_error, ndcg_score
-from scipy.stats import spearmanr
 import torch
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+
 
 class Evaluator:
     def __init__(self, framework="sklearn"):
